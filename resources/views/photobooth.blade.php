@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +8,11 @@
     <title>Photobooth Expo - TeFa</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        #kamera-preview { transform: scaleX(-1); } /* Mirror effect */
+        #kamera-preview {
+            transform: scaleX(-1);
+        }
+
+        /* Mirror effect */
     </style>
 </head>
 
@@ -23,7 +28,7 @@
             </select>
         </div>
 
-        <button onclick="pindahHalaman('halaman-frame')" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-6 px-12 rounded-2xl text-3xl shadow-lg transition transform hover:scale-105">
+        <button onclick="mulaiSesiBaru()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-6 px-12 rounded-2xl text-3xl shadow-lg transition transform hover:scale-105">
             📸 Tambah Photobooth Baru
         </button>
     </div>
@@ -56,8 +61,19 @@
             <div class="flex-grow flex flex-col gap-4 overflow-y-auto" id="slot-container"></div>
 
             <div class="mt-auto space-y-3 pt-4">
-                <button id="btn-jepret" onclick="mulaiHitungMundur()" class="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl text-2xl font-bold shadow-lg transition active:scale-95">📸 JEPRET</button>
-                <button id="btn-proses" onclick="prosesDanUpload()" class="w-full bg-green-600 hover:bg-green-500 py-5 rounded-2xl text-xl font-bold shadow-lg hidden transition">✨ CETAK & UPLOAD</button>
+                <button id="btn-jepret" onclick="mulaiHitungMundur()" class="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl text-2xl font-bold shadow-lg transition">📸 JEPRET</button>
+
+                <button id="btn-lanjut" onclick="kembaliKeLive()" class="w-full bg-yellow-500 hover:bg-yellow-400 py-6 rounded-2xl text-xl font-bold text-black hidden transition">⏭️ LANJUT Foto Berikutnya</button>
+
+                <button id="btn-tampil-raw" onclick="tampilkanSemuaFoto()" class="w-full bg-purple-600 hover:bg-purple-500 py-5 rounded-2xl text-xl font-bold shadow-lg hidden transition">1️⃣ Tampilkan Semua Foto</button>
+
+                <div id="grup-btn-jadikan-frame" class="hidden flex gap-2 w-full">
+                    <button onclick="jadikanFrame()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 py-5 rounded-2xl text-lg font-bold shadow-lg transition">2️⃣ Jadikan Frame</button>
+                    <button onclick="pindahHalaman('halaman-frame')" class="bg-gray-600 hover:bg-gray-500 px-4 rounded-2xl text-sm font-bold shadow-lg transition">Ganti<br>Frame</button>
+                </div>
+
+                <button id="btn-proses" onclick="prosesDanUpload()" class="w-full bg-green-600 hover:bg-green-500 py-5 rounded-2xl text-xl font-bold shadow-lg hidden transition">3️⃣ CETAK & UPLOAD</button>
+
                 <button onclick="batalSesi()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-lg transition">Batalkan Sesi</button>
             </div>
         </div>
@@ -69,7 +85,9 @@
 
         <div id="qrcode-container" class="p-6 bg-white rounded-3xl shadow-[0_0_50px_rgba(255,255,255,0.2)] mb-8"></div>
 
-        <button onclick="location.reload()" class="bg-gray-700 hover:bg-gray-600 px-10 py-4 rounded-xl font-bold text-xl transition">Selesai / Sesi Baru</button>
+        <button onclick="tutupSesi()" class="bg-gray-700 hover:bg-gray-600 px-10 py-4 rounded-xl font-bold text-xl transition">
+            Selesai / Sesi Baru
+        </button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -77,10 +95,11 @@
     <script>
         // --- STATE MANAGEMENT ---
         let frameAktif = '';
-        let daftarFoto = []; 
+        let daftarFoto = [];
         const maxFoto = 3;
 
         // Elemen DOM
+        const channel = new BroadcastChannel('photobooth_sync');
         const videoElement = document.getElementById('kamera-preview');
         const teksTimer = document.getElementById('teks-timer');
         const btnJepret = document.getElementById('btn-jepret');
@@ -94,11 +113,14 @@
         async function deteksiKamera() {
             try {
                 // Minta izin dasar agar nama kamera terbaca
-                await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: false
+                });
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const selector = document.getElementById('kamera-selector');
                 selector.innerHTML = '';
-                
+
                 devices.filter(d => d.kind === 'videoinput').forEach((d, index) => {
                     const opt = document.createElement('option');
                     opt.value = d.deviceId;
@@ -124,25 +146,38 @@
             frameAktif = namaFile;
             document.querySelectorAll('.frame-card').forEach(card => card.classList.replace('border-blue-500', 'border-gray-700'));
             document.getElementById('card-' + namaFile).classList.replace('border-gray-700', 'border-blue-500');
-            
+
             const btnLanjut = document.getElementById('btn-lanjut-kamera');
             btnLanjut.classList.remove('opacity-50', 'cursor-not-allowed');
             btnLanjut.disabled = false;
         }
 
-        async function lanjutKeKamera() {
+        function lanjutKeKamera() {
             document.getElementById('mini-frame-preview').src = '/frames/' + frameAktif;
             pindahHalaman('halaman-kamera');
-            await nyalakanKamera(document.getElementById('kamera-selector').value);
+            nyalakanKamera(document.getElementById('kamera-selector').value);
             renderSlotFoto();
+
+            // --- TAMBAHAN BARU: Suruh monitor pakai frame ini ---
+            channel.postMessage({
+                aksi: 'GANTI_FRAME',
+                frame: frameAktif
+            });
         }
 
         // --- LOGIKA KAMERA ---
         async function nyalakanKamera(deviceId) {
             matikanKamera(); // Matikan yang lama dulu jika ada
-            
-            const constraints = { video: { width: 1280, height: 720 } };
-            if (deviceId) constraints.video.deviceId = { exact: deviceId };
+
+            const constraints = {
+                video: {
+                    width: 1280,
+                    height: 720
+                }
+            };
+            if (deviceId) constraints.video.deviceId = {
+                exact: deviceId
+            };
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -162,19 +197,34 @@
         // --- LOGIKA JEPRET ---
         function mulaiHitungMundur() {
             if (daftarFoto.length >= maxFoto) return;
-
             btnJepret.disabled = true;
             btnJepret.classList.replace('bg-blue-600', 'bg-gray-500');
             let waktu = 3;
             teksTimer.innerText = waktu;
 
+            // --- TAMBAHAN BARU: Sinkronkan angka awal ---
+            channel.postMessage({
+                aksi: 'TIMER',
+                waktu: waktu
+            });
+
             const interval = setInterval(() => {
                 waktu--;
                 if (waktu > 0) {
                     teksTimer.innerText = waktu;
+                    // --- TAMBAHAN BARU: Sinkronkan detik ---
+                    channel.postMessage({
+                        aksi: 'TIMER',
+                        waktu: waktu
+                    });
                 } else {
                     clearInterval(interval);
                     teksTimer.innerText = "";
+                    // --- TAMBAHAN BARU: Hapus angka & picu flash ---
+                    channel.postMessage({
+                        aksi: 'TIMER',
+                        waktu: ""
+                    });
                     ambilGambar();
                 }
             }, 1000);
@@ -187,7 +237,7 @@
             document.getElementById('halaman-kamera').appendChild(flash);
             setTimeout(() => flash.remove(), 200);
 
-            // Canvas Capture
+            // Capture Canvas
             const canvas = document.createElement('canvas');
             canvas.width = 1280;
             canvas.height = 720;
@@ -196,8 +246,31 @@
             ctx.scale(-1, 1);
             ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
 
-            daftarFoto.push(canvas.toDataURL('image/jpeg', 0.9));
+            const base64Image = canvas.toDataURL('image/jpeg', 0.9);
+            daftarFoto.push(base64Image);
+
+            // --- KIRIM GAMBAR KE MONITOR CID ---
+            channel.postMessage({
+                aksi: 'TAMPILKAN_HASIL',
+                gambar: base64Image
+            });
+
             renderSlotFoto();
+
+            // --- ATUR LOGIKA TOMBOL ---
+            const btnLanjut = document.getElementById('btn-lanjut');
+            if (daftarFoto.length >= maxFoto) {
+                // Jika sudah 3 foto, langsung munculkan tombol CETAK
+                btnJepret.classList.add('hidden');
+                btnLanjut.classList.add('hidden');
+                btnProses.classList.remove('hidden');
+            } else {
+                // Jika masih ada sisa kuota, munculkan tombol LANJUT
+                btnJepret.classList.add('hidden');
+                btnProses.classList.add('hidden');
+                btnLanjut.classList.remove('hidden');
+                btnLanjut.innerText = `⏭️ LANJUT (ke Foto ${daftarFoto.length + 1})`;
+            }
         }
 
         function renderSlotFoto() {
@@ -231,9 +304,24 @@
             }
         }
 
+        function kembaliKeLive() {
+            // Sembunyikan tombol Lanjut, munculkan tombol Jepret
+            document.getElementById('btn-lanjut').classList.add('hidden');
+            btnJepret.classList.remove('hidden');
+            btnJepret.disabled = false;
+            btnJepret.classList.replace('bg-gray-500', 'bg-blue-600');
+
+            // Suruh monitor Cid kembali menampilkan kamera
+            channel.postMessage({
+                aksi: 'LANJUT_LIVE'
+            });
+        }
+
         function hapusFoto(index) {
             daftarFoto.splice(index, 1);
             renderSlotFoto();
+            // Jika dihapus/retake, layar Cid harus kembali ke live kamera otomatis
+            kembaliKeLive();
         }
 
         function batalSesi() {
@@ -244,10 +332,39 @@
                 document.getElementById('btn-lanjut-kamera').classList.add('opacity-50', 'cursor-not-allowed');
                 document.getElementById('btn-lanjut-kamera').disabled = true;
                 pindahHalaman('halaman-awal');
-                deteksiKamera(); // Refresh daftar kamera
+                deteksiKamera();
+
+                // Pastikan monitor kembali bersih
+                channel.postMessage({
+                    aksi: 'BATAL_SESI'
+                });
+                channel.postMessage({
+                    aksi: 'LANJUT_LIVE'
+                });
             }
         }
+        // Fungsi baru untuk mensinkronkan halaman pilih frame ke monitor
+        function mulaiSesiBaru() {
+            pindahHalaman('halaman-frame');
 
+            // Kirim sinyal ke layar monitor pelanggan
+            channel.postMessage({
+                aksi: 'TAMPILKAN_PILIHAN_FRAME'
+            });
+        }
+
+        // Fungsi baru untuk menutup QR di monitor sebelum halaman operator di-refresh
+        function tutupSesi() {
+            // Kirim sinyal ke monitor untuk menutup QR dan kembali ke mode standby
+            channel.postMessage({
+                aksi: 'TUTUP_QR_SELESAI'
+            });
+
+            // Beri jeda 100 milidetik agar pesan terkirim sebelum browser merefresh halaman
+            setTimeout(() => {
+                location.reload();
+            }, 100);
+        }
         // --- UPLOAD & QR CODE ---
         function tampilkanQR(url) {
             document.getElementById('popup-qr').classList.remove('hidden');
@@ -281,6 +398,10 @@
                 const result = await response.json();
                 if (result.success) {
                     tampilkanQR(result.link_gdrive || "https://google.com"); // Fallback URL sementara jika backend belum siap
+                    channel.postMessage({
+                        aksi: 'TAMPILKAN_QR',
+                        link: result.link_gdrive
+                    });
                 } else {
                     alert("Gagal memproses: " + result.message);
                     btnProses.disabled = false;
@@ -294,7 +415,33 @@
                 btnProses.innerText = "✨ CETAK & UPLOAD";
                 btnProses.classList.replace('bg-gray-500', 'bg-green-600');
             }
+
+        }
+
+        function tampilkanSemuaFoto() {
+            // Sembunyikan tombol ini, munculkan tombol Jadikan Frame
+            document.getElementById('btn-tampil-raw').classList.add('hidden');
+            document.getElementById('grup-btn-jadikan-frame').classList.remove('hidden');
+
+            // Beritahu monitor untuk menampilkan 3 foto mentah
+            channel.postMessage({
+                aksi: 'REVIEW_RAW',
+                gambar: daftarFoto // Kirim array berisi 3 foto
+            });
+        }
+
+        function jadikanFrame() {
+            // Sembunyikan tombol Jadikan Frame, munculkan Cetak
+            document.getElementById('grup-btn-jadikan-frame').classList.add('hidden');
+            document.getElementById('btn-proses').classList.remove('hidden');
+
+            // Beritahu monitor untuk merakit foto mentah ke dalam bingkai (Preview Statis)
+            channel.postMessage({
+                aksi: 'REVIEW_FRAMED',
+                frame: frameAktif
+            });
         }
     </script>
 </body>
+
 </html>

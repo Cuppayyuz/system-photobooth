@@ -10,9 +10,11 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware): void {
-        //
+    ->withMiddleware(function (Middleware $middleware) {
+        // --- RAHASIA NGROK DI LARAVEL 13 ---
+        // Ini akan mengizinkan semua koneksi dari Ngrok
+        $middleware->trustProxies(at: '*');
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
+    ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();

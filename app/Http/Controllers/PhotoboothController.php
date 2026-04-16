@@ -5,61 +5,107 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\SesiFoto;
 use App\Models\ItemFoto;
-use Illuminate\Support\Str;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\KirimFotoTefa;
 
 class PhotoboothController extends Controller
 {
     public function simpanFoto(Request $request)
     {
         try {
-            $manager = new ImageManager(new Driver());
-            $images = $request->input('images'); // Array dari 3 Base64
+            // --- 1. PROSES STITCHING (Intervention V4) ---
+            $manager = ImageManager::usingDriver(Driver::class);
+
+            $images = $request->input('images');
             $frameName = $request->input('frame');
+            $namaPelanggan = $request->input('nama_pelanggan');
 
-            // 1. Baca File Frame Terlebih Dahulu (Sebagai Template Utama)
             $pathFrame = public_path('frames/' . $frameName);
-            $templateFrame = $manager->read($pathFrame);
+            $templateFrame = $manager->decode($pathFrame);
 
-            // Ambil lebar dan tinggi frame asli (misal: 1200x3600)
+            // ... kode bagian atas tetap ...
             $lebarFrame = $templateFrame->width();
             $tinggiFrame = $templateFrame->height();
 
-            // Hitung tinggi tiap slot (Tinggi total / 3)
-            $tinggiPerFoto = $tinggiFrame / 3;
+            // --- KONFIGURASI BINGKAI (SILAKAN UBAH ANGKA INI SESUAI TEMPLATE-MU) ---
+            $marginKiri = 30;  // Jarak foto dari tepi kiri frame
+            $marginAtas = 40;  // Jarak foto pertama dari ujung atas frame
+            $jarakAntarFoto = 20; // Celah (gap) antara foto 1, 2, dan 3
 
-            // 2. Buat Kanvas Kosong sesuai ukuran frame
-            $canvas = $manager->create($lebarFrame, $tinggiFrame);
+            // Menghitung ukuran foto aktual di dalam bingkai
+            $lebarFotoAktual = $lebarFrame - ($marginKiri * 2);
+            // Menghitung tinggi tiap foto (Tinggi total dikurangi margin atas, bawah, dan celah)
+            $tinggiFotoAktual = ($tinggiFrame - ($marginAtas * 2) - ($jarakAntarFoto * 2)) / 3;
 
-            // 3. Masukkan 3 foto ke dalam kanvas (Stitching Vertikal)
+            $canvas = $manager->createImage($lebarFrame, $tinggiFrame);
+
             foreach ($images as $index => $base64) {
                 $imageParts = explode(";base64,", $base64);
                 $decoded = base64_decode($imageParts[1]);
 
-                // Baca foto dan resize agar pas dengan lebar frame
-                $foto = $manager->read($decoded);
+                $foto = $manager->decode($decoded);
+                // Menggunakan cover() agar foto otomatis terpotong rapi tanpa gepeng
+                $foto->cover((int)$lebarFotoAktual, (int)$tinggiFotoAktual);
 
-                // Gunakan cover() agar foto memenuhi slot tanpa gepeng
-                $foto->cover($lebarFrame, $tinggiPerFoto);
+                // Menghitung posisi Y (turun ke bawah) untuk masing-masing foto
+                $posisiY = $marginAtas + ($index * ($tinggiFotoAktual + $jarakAntarFoto));
 
-                // Tempelkan di posisi Y yang sesuai (0, 1/3, 2/3)
-                $posisiY = $index * $tinggiPerFoto;
-                $canvas->place($foto, 'top-left', 0, (int)$posisiY);
+                // Masukkan foto dengan kordinat X (margin kiri) dan Y yang sudah dihitung
+                $canvas->insert($foto, $marginKiri, (int)$posisiY);
             }
 
-            // 4. Tempelkan Frame (Overlay) di atas tumpukan 3 foto tadi
-            $canvas->place($templateFrame, 'top-left');
+            // Terakhir, timpa dengan Frame PNG (yang tengahnya bolong/transparan)
+            $canvas->insert($templateFrame, 0, 0);
+            // ... kode save ke lokal tetap ...
 
-            // 5. Simpan Hasil Akhir (Strip)
-            $fileName = 'strip_' . time() . '.jpg';
-            $savePath = public_path('uploads/framed/' . $fileName);
-            $canvas->save($savePath);
+            // --- 2. PENYIMPANAN LOKAL DENGAN NAMA UNIK (PRIVATE) ---
+            // Membuat string acak agar link tidak bisa ditebak orang lain
+            // ... bagian atas (try, $manager, dll) tetap sama ...
 
-            // 6. Simpan ke Database (Model SesiFoto)
+            // --- 1. BUAT FOLDER KHUSUS UNTUK SESI INI ---
+            $kodeAcak = bin2hex(random_bytes(6)); // Menghasilkan kode seperti 'a1b2c3d4e5f6'
+            $folderPath = public_path('uploads/sessions/' . $kodeAcak);
+            if (!file_exists($folderPath)) {
+                mkdir($folderPath, 0777, true);
+            }
+
+            $canvas = $manager->createImage($lebarFrame, $tinggiFrame);
+
+            // --- 2. PROSES FOTO MENTAH & STITCHING ---
+            foreach ($images as $index => $base64) {
+                $imageParts = explode(";base64,", $base64);
+                $decoded = base64_decode($imageParts[1]);
+
+                $foto = $manager->decode($decoded);
+
+                // SIMPAN FOTO MENTAH (Tanpa Frame)
+                $foto->save($folderPath . '/raw_' . ($index + 1) . '.jpg', 90);
+
+                // Proses untuk masuk ke Frame
+                $foto->cover((int)$lebarFotoAktual, (int)$tinggiFotoAktual);
+                $posisiY = $marginAtas + ($index * ($tinggiFotoAktual + $jarakAntarFoto));
+                $canvas->insert($foto, $marginKiri, (int)$posisiY);
+            }
+
+            $canvas->insert($templateFrame, 0, 0);
+
+            // SIMPAN FOTO BERBINGKAI
+            $canvas->save($folderPath . '/framed.jpg', 90);
+
+            // --- 3. KONFIGURASI LINK NGROK KE HALAMAN GALLERY ---
+            // Ganti dengan link Ngrok kamu
+            $urlNgrok = "https://masukkan-id-ngrok-kamu.ngrok-free.app";
+            $linkDownload = $urlNgrok . '/gallery/' . $kodeAcak; // Link mengarah ke halaman ala GDrive
+
+            // ... kode simpan database, email, dan response JSON tetap sama ...
+
+            // --- 4. SIMPAN KE DATABASE ---
             $sesi = SesiFoto::create([
-                'nama_pelanggan' => $request->nama_pelanggan,
-                'status_cetak' => 'menunggu'
+                'nama_pelanggan' => $namaPelanggan,
+                'status_cetak' => 'menunggu',
+                'tautan_gdrive' => $linkDownload // Kita simpan link Ngrok di sini
             ]);
 
             ItemFoto::create([
@@ -68,9 +114,24 @@ class PhotoboothController extends Controller
                 'jalur_foto_frame' => 'uploads/framed/' . $fileName,
             ]);
 
-            return response()->json(['success' => true]);
+            // --- 5. KIRIM EMAIL KE TEFA ---
+            try {
+                $emailTefa = env('MAIL_TO_TEFA');
+                Mail::to($emailTefa)->send(new KirimFotoTefa($namaPelanggan, $savePath));
+            } catch (\Exception $e) {
+                \Log::error("Email Gagal: " . $e->getMessage());
+            }
+
+            // --- 6. RESPONSE UNTUK QR CODE ---
+            return response()->json([
+                'success' => true,
+                'link_gdrive' => $linkDownload
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }

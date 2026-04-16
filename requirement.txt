@@ -1,3 +1,9 @@
 1. install library Intervention Image.
 2. set up database migration sesi foto & item foto untuk :  
 3. set up .env
+4. set up migration , model , controller 
+5. install google/apiclient
+6. tambah folder frame di folder /public dan isi dengan frame byang ada bolong2 nya 
+7. buat tampilan dan sistem (resource/views/photobooth.blade.php dan routes/web.php) 
+8. integrasikan api google drive di google cloud console 
+9. buat gdrive dan hanya untuk penerima link 
