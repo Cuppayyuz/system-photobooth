@@ -5,7 +5,7 @@ use App\Http\Controllers\PhotoboothController;
 use App\Models\SesiFoto; // Pastikan ini ada di atas
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect('/photobooth');
 });
 Route::get('/photobooth', function () {
     return view('photobooth');

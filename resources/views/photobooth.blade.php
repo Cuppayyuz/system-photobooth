@@ -38,6 +38,8 @@
         <div class="flex-grow grid grid-cols-3 gap-8 content-start max-w-5xl mx-auto w-full" id="container-frame">
             <div onclick="pilihFrame('frame1.png')" id="card-frame1.png" class="frame-card cursor-pointer border-4 border-gray-700 rounded-xl p-2 bg-gray-800"><img src="/frames/frame1.png" class="w-full h-auto"></div>
             <div onclick="pilihFrame('frame2.png')" id="card-frame2.png" class="frame-card cursor-pointer border-4 border-gray-700 rounded-xl p-2 bg-gray-800"><img src="/frames/frame2.png" class="w-full h-auto"></div>
+            <div onclick="pilihFrame('frame3.png')" id="card-frame3.png" class="frame-card cursor-pointer border-4 border-gray-700 rounded-xl p-2 bg-gray-800"><img src="/frames/frame3.png" class="w-full h-auto"></div>
+            <div onclick="pilihFrame('frame4.png')" id="card-frame4.png" class="frame-card cursor-pointer border-4 border-gray-700 rounded-xl p-2 bg-gray-800"><img src="/frames/frame4.png" class="w-full h-auto"></div>
         </div>
         <div class="mt-8 flex justify-between max-w-5xl mx-auto w-full">
             <button onclick="pindahHalaman('halaman-awal')" class="text-gray-400 font-bold text-xl hover:text-white transition">⬅ Kembali</button>
@@ -63,16 +65,14 @@
             <div class="mt-auto space-y-3 pt-4">
                 <button id="btn-jepret" onclick="mulaiHitungMundur()" class="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl text-2xl font-bold shadow-lg transition">📸 JEPRET</button>
 
-                <button id="btn-lanjut" onclick="kembaliKeLive()" class="w-full bg-yellow-500 hover:bg-yellow-400 py-6 rounded-2xl text-xl font-bold text-black hidden transition">⏭️ LANJUT Foto Berikutnya</button>
-
                 <button id="btn-tampil-raw" onclick="tampilkanSemuaFoto()" class="w-full bg-purple-600 hover:bg-purple-500 py-5 rounded-2xl text-xl font-bold shadow-lg hidden transition">1️⃣ Tampilkan Semua Foto</button>
 
-                <div id="grup-btn-jadikan-frame" class="hidden flex gap-2 w-full">
-                    <button onclick="jadikanFrame()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 py-5 rounded-2xl text-lg font-bold shadow-lg transition">2️⃣ Jadikan Frame</button>
-                    <button onclick="pindahHalaman('halaman-frame')" class="bg-gray-600 hover:bg-gray-500 px-4 rounded-2xl text-sm font-bold shadow-lg transition">Ganti<br>Frame</button>
-                </div>
+                <button id="btn-preview-frame" onclick="previewFrame()" class="w-full bg-indigo-600 hover:bg-indigo-500 py-5 rounded-2xl text-xl font-bold shadow-lg hidden transition">2️⃣ Lihat Hasil Frame</button>
 
-                <button id="btn-proses" onclick="prosesDanUpload()" class="w-full bg-green-600 hover:bg-green-500 py-5 rounded-2xl text-xl font-bold shadow-lg hidden transition">3️⃣ CETAK & UPLOAD</button>
+                <div id="grup-final" class="hidden flex gap-2 w-full">
+                    <button onclick="bukaPilihFrameLagi()" class="bg-gray-600 hover:bg-gray-500 px-4 rounded-2xl text-sm font-bold shadow-lg transition">🔄 Ganti<br>Frame</button>
+                    <button id="btn-proses" onclick="prosesDanUpload()" class="flex-1 bg-green-600 hover:bg-green-500 py-5 rounded-2xl text-xl font-bold shadow-lg transition">3️⃣ CETAK & UPLOAD</button>
+                </div>
 
                 <button onclick="batalSesi()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl text-lg transition">Batalkan Sesi</button>
             </div>
@@ -155,14 +155,27 @@
         function lanjutKeKamera() {
             document.getElementById('mini-frame-preview').src = '/frames/' + frameAktif;
             pindahHalaman('halaman-kamera');
-            nyalakanKamera(document.getElementById('kamera-selector').value);
-            renderSlotFoto();
 
-            // --- TAMBAHAN BARU: Suruh monitor pakai frame ini ---
-            channel.postMessage({
-                aksi: 'GANTI_FRAME',
-                frame: frameAktif
-            });
+            if (sedangGantiFrame) {
+                // JIKA SEDANG GANTI FRAME DI TENGAH JALAN
+                sedangGantiFrame = false;
+                
+                // 1. Render ulang foto agar layar kiri operator tidak kosong
+                renderSlotFoto(); 
+                
+                // 2. Langsung panggil previewFrame() untuk memunculkan tombol "Cetak & Upload"
+                //    dan menyuruh monitor merakit foto dengan frame yang baru dipilih.
+                previewFrame(); 
+
+            } else {
+                // JIKA SESI BARU
+                nyalakanKamera(document.getElementById('kamera-selector').value);
+                renderSlotFoto();
+                channel.postMessage({
+                    aksi: 'GANTI_FRAME',
+                    frame: frameAktif
+                });
+            }
         }
 
         // --- LOGIKA KAMERA ---
@@ -255,22 +268,8 @@
                 gambar: base64Image
             });
 
+            // Langsung render slot (tombol otomatis diatur di dalam sini)
             renderSlotFoto();
-
-            // --- ATUR LOGIKA TOMBOL ---
-            const btnLanjut = document.getElementById('btn-lanjut');
-            if (daftarFoto.length >= maxFoto) {
-                // Jika sudah 3 foto, langsung munculkan tombol CETAK
-                btnJepret.classList.add('hidden');
-                btnLanjut.classList.add('hidden');
-                btnProses.classList.remove('hidden');
-            } else {
-                // Jika masih ada sisa kuota, munculkan tombol LANJUT
-                btnJepret.classList.add('hidden');
-                btnProses.classList.add('hidden');
-                btnLanjut.classList.remove('hidden');
-                btnLanjut.innerText = `⏭️ LANJUT (ke Foto ${daftarFoto.length + 1})`;
-            }
         }
 
         function renderSlotFoto() {
@@ -293,20 +292,55 @@
                 container.appendChild(slot);
             }
 
+            // --- LOGIKA KEMUNCULAN TOMBOL YANG BENAR ---
             if (daftarFoto.length >= maxFoto) {
+                // Jika foto sudah 3, matikan tombol jepret
                 btnJepret.classList.add('hidden');
-                btnProses.classList.remove('hidden');
+
+                // Munculkan HANYA tombol 1 (Tampilkan Semua Foto)
+                document.getElementById('btn-tampil-raw')?.classList.remove('hidden');
+
+                // Pastikan tombol tahap selanjutnya sembunyi
+                document.getElementById('btn-preview-frame')?.classList.add('hidden');
+                document.getElementById('grup-final')?.classList.add('hidden');
             } else {
+                // Jika foto belum 3 (atau ada yang dihapus)
                 btnJepret.classList.remove('hidden');
-                btnProses.classList.add('hidden');
                 btnJepret.disabled = false;
                 btnJepret.classList.replace('bg-gray-500', 'bg-blue-600');
+
+                // Sembunyikan semua tombol langkah akhir
+                document.getElementById('btn-tampil-raw')?.classList.add('hidden');
+                document.getElementById('btn-preview-frame')?.classList.add('hidden');
+                document.getElementById('grup-final')?.classList.add('hidden');
             }
         }
 
-        function kembaliKeLive() {
-            // Sembunyikan tombol Lanjut, munculkan tombol Jepret
+        // LOGIKA KEMUNCULAN TOMBOL
+        if (daftarFoto.length >= maxFoto) {
+            // Jika foto sudah 3, matikan tombol jepret, munculkan tombol Review
+            btnJepret.classList.add('hidden');
             document.getElementById('btn-lanjut').classList.add('hidden');
+
+            // Munculkan HANYA tombol langkah 1
+            document.getElementById('btn-tampil-raw').classList.remove('hidden');
+            document.getElementById('grup-btn-jadikan-frame').classList.add('hidden');
+            document.getElementById('btn-proses').classList.add('hidden');
+        } else {
+            // Jika foto belum 3 (atau habis di-retake)
+            btnJepret.classList.remove('hidden');
+            btnJepret.disabled = false;
+            btnJepret.classList.replace('bg-gray-500', 'bg-blue-600');
+
+            // Sembunyikan semua tombol langkah akhir
+            document.getElementById('btn-tampil-raw')?.classList.add('hidden');
+            document.getElementById('grup-btn-jadikan-frame')?.classList.add('hidden');
+            document.getElementById('btn-proses')?.classList.add('hidden');
+        }
+        // --- LOGIKA REVIEW & PREVIEW ---
+
+        function kembaliKeLive() {
+            // Kembalikan tombol Jepret
             btnJepret.classList.remove('hidden');
             btnJepret.disabled = false;
             btnJepret.classList.replace('bg-gray-500', 'bg-blue-600');
@@ -318,9 +352,13 @@
         }
 
         function hapusFoto(index) {
+            // Hapus foto dari array berdasarkan urutannya
             daftarFoto.splice(index, 1);
+
+            // Render ulang slot (otomatis mengembalikan tombol jepret karena foto < 3)
             renderSlotFoto();
-            // Jika dihapus/retake, layar Cid harus kembali ke live kamera otomatis
+
+            // PENTING: Sembunyikan layar Review di monitor, kembalikan ke kamera live
             kembaliKeLive();
         }
 
@@ -347,7 +385,9 @@
         function mulaiSesiBaru() {
             pindahHalaman('halaman-frame');
 
-            // Kirim sinyal ke layar monitor pelanggan
+            // Reset tulisan tombol untuk sesi baru
+            document.getElementById('btn-lanjut-kamera').innerText = "Lanjut ke Pemotretan ➡";
+
             channel.postMessage({
                 aksi: 'TAMPILKAN_PILIHAN_FRAME'
             });
@@ -419,14 +459,43 @@
         }
 
         function tampilkanSemuaFoto() {
-            // Sembunyikan tombol ini, munculkan tombol Jadikan Frame
             document.getElementById('btn-tampil-raw').classList.add('hidden');
-            document.getElementById('grup-btn-jadikan-frame').classList.remove('hidden');
+            document.getElementById('btn-preview-frame').classList.remove('hidden'); // Munculkan tombol ke-2
 
-            // Beritahu monitor untuk menampilkan 3 foto mentah
             channel.postMessage({
                 aksi: 'REVIEW_RAW',
-                gambar: daftarFoto // Kirim array berisi 3 foto
+                gambar: daftarFoto
+            });
+        }
+
+        // 2. Tampilkan Preview di Dalam Bingkai
+        function previewFrame() {
+            // Sembunyikan semua tombol fase 1 & 2 dengan paksa
+            document.getElementById('btn-tampil-raw')?.classList.add('hidden');
+            document.getElementById('btn-preview-frame')?.classList.add('hidden');
+            
+            // Munculkan grup tombol final & Cetak
+            document.getElementById('grup-final').classList.remove('hidden'); 
+            document.getElementById('btn-proses').classList.remove('hidden'); 
+
+            channel.postMessage({
+                aksi: 'REVIEW_FRAMED',
+                frame: frameAktif,
+                gambar: daftarFoto // Kirim fotonya agar monitor bisa merakitnya
+            });
+        }
+
+        let sedangGantiFrame = false;
+
+        function bukaPilihFrameLagi() {
+            sedangGantiFrame = true;
+            pindahHalaman('halaman-frame');
+
+            // Ubah tulisan tombol menjadi Implementasi Frame
+            document.getElementById('btn-lanjut-kamera').innerText = "✨ Implementasi Frame";
+
+            channel.postMessage({
+                aksi: 'TAMPILKAN_PILIHAN_FRAME'
             });
         }
 

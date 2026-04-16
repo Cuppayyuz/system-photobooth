@@ -27,6 +27,8 @@
         <div class="flex-grow grid grid-cols-3 gap-10 content-start max-w-6xl mx-auto w-full">
             <div class="border-4 border-gray-700 rounded-2xl p-4 bg-gray-800 shadow-2xl"><img src="/frames/frame1.png" class="w-full h-auto"></div>
             <div class="border-4 border-gray-700 rounded-2xl p-4 bg-gray-800 shadow-2xl"><img src="/frames/frame2.png" class="w-full h-auto"></div>
+            <div class="border-4 border-gray-700 rounded-2xl p-4 bg-gray-800 shadow-2xl"><img src="/frames/frame3.png" class="w-full h-auto"></div>
+            <div class="border-4 border-gray-700 rounded-2xl p-4 bg-gray-800 shadow-2xl"><img src="/frames/frame4.png" class="w-full h-auto"></div>
         </div>
         <p class="text-center text-2xl text-gray-400 mt-10 animate-pulse">Beri tahu operator bingkai mana yang kamu inginkan...</p>
     </div>
@@ -45,11 +47,13 @@
     </div>
 
     <div id="layar-review-framed" class="absolute inset-0 bg-black z-[38] flex items-center justify-center hidden">
-        <div class="relative w-full h-full flex justify-center items-center">
-            <div class="relative h-[95vh] aspect-[3/4] bg-white overflow-hidden shadow-2xl" id="preview-frame-container">
-                <img id="frame-overlay" src="" class="absolute inset-0 w-full h-full object-fill z-20 pointer-events-none">
-            </div>
+
+        <div class="relative h-[95vh] aspect-[600/1800] bg-transparent overflow-hidden shadow-[0_0_50px_rgba(255,255,255,0.1)]" id="preview-frame-container">
+
+            <img id="frame-overlay-review" src="" class="absolute inset-0 w-full h-full object-cover z-20 pointer-events-none">
+
         </div>
+
     </div>
 
     <div id="popup-qr" class="absolute inset-0 bg-black/95 z-[60] flex flex-col items-center justify-center hidden">
@@ -78,7 +82,7 @@
         });
 
         const channel = new BroadcastChannel('photobooth_sync');
-    
+
         channel.onmessage = (event) => {
             const data = event.data;
 
@@ -128,22 +132,58 @@
             }
 
             // ALUR 2: PREVIEW FRAME
+            // ALUR 2: PREVIEW FRAME (HASIL AKHIR)
+            // ALUR 2: PREVIEW FRAME (HASIL AKHIR)
+            // ALUR 2: PREVIEW FRAME (HASIL AKHIR)
+            // monitor.blade.php
+
+            // ALUR 2: PREVIEW FRAME (HASIL AKHIR)
             if (data.aksi === 'REVIEW_FRAMED') {
+                // 1. Sembunyikan layar lain & tampilkan layar hasil
+                document.getElementById('layar-pilih-frame').classList.add('hidden');
                 document.getElementById('layar-review-raw').classList.add('hidden');
+                document.getElementById('layar-kamera').classList.add('hidden');
                 document.getElementById('layar-review-framed').classList.remove('hidden');
 
+                // 2. Tangkap foto jika operator mengirimnya ulang
+                if (data.gambar) {
+                    fotoSesiIni = data.gambar;
+                }
+
+                // 3. Update Gambar Bingkai (Frame)
+                const overlayReview = document.getElementById('frame-overlay-review');
+                if (overlayReview) {
+                    overlayReview.src = '/frames/' + data.frame + '?t=' + Date.now();
+                }
+
+                // 4. Bersihkan kontainer foto lama
                 const container = document.getElementById('preview-frame-container');
-                // Hapus foto lama, sisakan frame-overlay
                 container.querySelectorAll('.foto-insert').forEach(el => el.remove());
 
-                // Insert 3 foto dengan perkiraan layout (Ini hanya ilustrasi CSS)
+                // 5. RUMUS PRESISI (BERDASARKAN UKURAN 397 x 1123 px)
+                // Margin Atas: 9.80%, Lebar: 80.10%, Kiri: 11.59%, Tinggi: 18.79%, Jarak: 4.10%
+                const pTinggi = 18.79;
+                const pJarak = 4.10;
+                const pAtasDasar = 9.80;
+
                 fotoSesiIni.forEach((imgSrc, idx) => {
-                    // Margin bisa diatur pakai tailwind absolute positioning
-                    const topPos = 5 + (idx * 31); // Contoh: 5%, 36%, 67%
-                    container.innerHTML += `<img src="${imgSrc}" class="foto-insert absolute w-[90%] left-[5%] aspect-[4/3] object-cover transform scale-x-[-1] z-10" style="top: ${topPos}%;">`;
+                    // Hitung posisi top otomatis untuk foto 1, 2, dan 3
+                    const topPos = pAtasDasar + (idx * (pTinggi + pJarak));
+
+                    // Membuat elemen gambar dengan CSS yang benar-benar rapi
+                    const imgElement = document.createElement('img');
+                    imgElement.src = imgSrc;
+                    imgElement.className = "foto-insert absolute object-cover transform scale-x-[-1] z-10";
+
+                    // Set gaya CSS secara manual agar tidak bentrok dengan sisa teks
+                    imgElement.style.width = "80.10%";
+                    imgElement.style.left = "11.59%";
+                    imgElement.style.height = "18.79%";
+                    imgElement.style.top = topPos + "%";
+
+                    container.appendChild(imgElement);
                 });
             }
-
             if (data.aksi === 'TAMPILKAN_QR') {
                 popupQr.classList.remove('hidden');
                 document.getElementById("qrcode-container").innerHTML = "";
